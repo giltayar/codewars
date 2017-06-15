@@ -1,5 +1,6 @@
 function solvePuzzle(clues) {
-  solve(nextSkyScraperState({ clues,
+  console.log('clues', clues)
+  return solve(nextSkyScraperState({ clues,
     board: generateInitialBoard(clues.length / 4),
     boardRows: clues.length / 4,
     boardColumns: clues.length / 4,
@@ -23,57 +24,56 @@ function generateInitialBoard(boardLength) {
   return board
 }
 
-function solve(state) {
-  console.log('checking', state.clueI, state.row, state.col, state.board)
-  if (satisfiesConstraints(state)) {
-    console.log('  satisfies!')
-    const newState = nextSkyScraperState(state)
-    console.log('  next', newState.clueI, newState.row, newState.col, newState.board)
-    if (lastState(newState))
-      return newState.board
+function solve(state, level = 0) {
+  let nextState = state
+  for (;;) {
+    console.log(`${indent(level)}incrementing...`, nextState.clueI, nextState.row, nextState.col, '\n', nextState.board)
+    let incrementedSkyScraperState = incrementSkyScraperState(nextState)
+    while (incrementedSkyScraperState && !satisfiesConstraints(incrementedSkyScraperState))
+      incrementedSkyScraperState = incrementSkyScraperState(incrementedSkyScraperState)
 
-    const solvedBoard = solve(newState)
-    if (solvedBoard)
-      return solvedBoard
-    else {
-      console.log('  next not good, incrementing')
-      let incrementedSkyScraperState = incrementSkyScraperState(state)
-
-      while (incrementedSkyScraperState && !satisfiesConstraints(incrementedSkyScraperState))
-        incrementedSkyScraperState = incrementSkyScraperState(incrementedSkyScraperState)
-
-      if (!incrementedSkyScraperState) {
-        console.log('  incrememting failure')
-        return null
-      }
-      else {
-        console.log('  incrememting success', incrementedSkyScraperState.board)
-        return solve(incrementedSkyScraperState)
-      }
+    if (!incrementedSkyScraperState) {
+      nextState = state
+      console.log(`${indent(level)}switching back to`, nextState.clueI, nextState.row, nextState.col, '\n', nextState.board)
     }
-
+    else {
+      nextState = incrementedSkyScraperState
+      console.log(`${indent(level)}using incremented\n`, nextState.board)
+    }
+    // console.log(`${indent(level)}recursing`)
+    // const solution = solve(incrementedSkyScraperState, level + 1)
+    // if (solution)
+    //   return solution
+    console.log(`${indent(level)}next...`, nextState.clueI, nextState.row, nextState.col)
+    const nextState2 = nextSkyScraperState(nextState)
+    console.log(`${indent(level)}...to`, nextState2.clueI, nextState2.row, nextState2.col, '\n', nextState2.board)
+    const solution = solve(nextState2, level + 1)
+    if (solution)
+      return solution
   }
-  else
-    return null
 }
 
 function satisfiesConstraints({ clues, board, boardRows, boardColumns, clueI, row, col, direction }) {
-  return satisfiesColumnIsUnique(board, row, col, boardRows) &&
-    satisfiesRowIsUnique(board, row, col, boardColumns) &&
+  return satisfiesColumnIsUnique(board, col, boardRows) &&
+    satisfiesRowIsUnique(board, row, boardColumns) &&
     satisfiesClue(clues[clueI], board, boardRows, boardColumns, row, col, direction)
 }
 
 function satisfiesClue(clue, board, boardRows, boardColumns, row, col, direction) {
   if (direction.rowDirection === 0)
-    row = 0
-  else if (direction.colDirection === 0)
     col = 0
+  else if (direction.colDirection === 0)
+    row = 0
 
   let maxSkyScraperHeight = 0
   let skyScrapersSeenTillNow = 0
+  let hasIndeterminateSkyScrapers = false
   for (; row < boardRows && col < boardColumns; row += direction.rowDirection, col += direction.colDirection) {
     const skyScraperHeight = board[row][col]
-    if (skyScraperHeight === 0) continue
+    if (skyScraperHeight === 0) {
+      hasIndeterminateSkyScrapers = true
+      continue
+    }
 
     if (board[row][col] > maxSkyScraperHeight) {
       skyScrapersSeenTillNow++
@@ -83,14 +83,18 @@ function satisfiesClue(clue, board, boardRows, boardColumns, row, col, direction
     }
   }
 
-  return skyScrapersSeenTillNow === clue
+  return hasIndeterminateSkyScrapers
+    ? skyScrapersSeenTillNow <= clue
+    : skyScrapersSeenTillNow === clue
 }
 
 function satisfiesColumnIsUnique(board, col, boardRows) {
   const numberInRow = new Array(boardRows)
 
-  for (const currRow = 0; currRow < boardRows; currRow++) {
+  for (let currRow = 0; currRow < boardRows; currRow++) {
     const skyScraper = board[currRow][col]
+
+    if (skyScraper === 0) return true
 
     if (numberInRow[skyScraper] !== undefined)
       return false
@@ -109,6 +113,8 @@ function satisfiesRowIsUnique(board, row, boardCols) {
 
   for (let currCol = 0; currCol < boardCols; currCol++) {
     const skyScraper = board[row][currCol]
+
+    if (skyScraper === 0) return true
 
     if (numberInCol[skyScraper] !== undefined)
       return false
@@ -141,9 +147,7 @@ function nextSkyScraperState({ clues, board, clueI, boardRows, boardColumns, row
     col += direction.colDirection
   }
 
-  const ret = incrementSkyScraperState({ clues, board, clueI, boardRows, boardColumns, row, col, direction })
-
-  return ret
+  return { clues, board, clueI, boardRows, boardColumns, row, col, direction }
 }
 
 function determineStartFromClueI(clueI, boardRows, boardColumns) {
@@ -178,8 +182,8 @@ function isOnTheEdge(row, col, direction, boardRows, boardColumns) {
     col + direction.colDirection === boardColumns
 }
 
-function incrementSkyScraperState({ clues, clueI, board, boardColumns, row, col , direction}) {
-  const newBoard = Array.from(board, (row, rowI) => rowI === row ? Array.from(row) : row)
+function incrementSkyScraperState({ clues, clueI, board, boardRows, boardColumns, row, col , direction}) {
+  const newBoard = Array.from(board, (oldRow, rowI) => rowI === row ? Array.from(oldRow) : oldRow)
   const skyScraperHeight = newBoard[row][col]
 
   if (skyScraperHeight === boardColumns)
@@ -187,7 +191,14 @@ function incrementSkyScraperState({ clues, clueI, board, boardColumns, row, col 
 
   newBoard[row][col]++
 
-  return { clues, clueI, board: newBoard, boardColumns, row, col, direction }
+  return { clues, clueI, board: newBoard, boardRows, boardColumns, row, col, direction }
+}
+
+function indent(level) {
+  if (level <= 20)
+    return ''.padStart(level, '-')
+  else
+    return `(${level})` + ''.padStart(20, '-') + ``
 }
 
 console.log(solvePuzzle([3, 2, 2, 3, 2, 1,
